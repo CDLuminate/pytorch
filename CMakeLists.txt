@@ -21,6 +21,13 @@ endif()
 
 # ---[ Project and semantic versioning.
 project(Caffe2 CXX C)
+file(READ "version.txt" PYTORCH_VERSION)
+message("-- PyTorch version: ${PYTORCH_VERSION}")
+string(REGEX MATCH "([0-9]*)\.([0-9]*)\.([a-zA-Z0-9]*)" _ ${PYTORCH_VERSION})
+set(PYTORCH_VERSION_MAJOR "${CMAKE_MATCH_1}")
+set(PYTORCH_VERSION_MINOR "${CMAKE_MATCH_2}")
+set(PYTORCH_VERSION_PATCH "${CMAKE_MATCH_3}")
+set(PYTORCH_SOVERSION "${PYTORCH_VERSION_MAJOR}")
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
   set(LINUX TRUE)
@@ -137,8 +144,8 @@ cmake_dependent_option(
 option(COLORIZE_OUTPUT "Colorize output during compilation" ON)
 option(USE_ASAN "Use Address Sanitizer" OFF)
 option(USE_TSAN "Use Thread Sanitizer" OFF)
-option(USE_CUDA "Use CUDA" ON)
-option(USE_ROCM "Use ROCm" ON)
+option(USE_CUDA "Use CUDA" OFF)
+option(USE_ROCM "Use ROCm" OFF)
 option(CAFFE2_STATIC_LINK_CUDA "Statically link CUDA libraries" OFF)
 cmake_dependent_option(
     USE_CUDNN "Use cuDNN" ON
@@ -146,14 +153,14 @@ cmake_dependent_option(
 cmake_dependent_option(
     USE_STATIC_CUDNN "Use cuDNN static libraries" OFF
     "USE_CUDNN" OFF)
-option(USE_FBGEMM "Use FBGEMM (quantized 8-bit server operators)" ON)
+option(USE_FBGEMM "Use FBGEMM (quantized 8-bit server operators)" OFF)
 option(USE_FAKELOWP "Use FakeLowp operators" OFF)
-option(USE_FFMPEG "Use ffmpeg" OFF)
-option(USE_GFLAGS "Use GFLAGS" OFF)
-option(USE_GLOG "Use GLOG" OFF)
-option(USE_LEVELDB "Use LEVELDB" OFF)
+option(USE_FFMPEG "Use ffmpeg" ON)
+option(USE_GFLAGS "Use GFLAGS" ON)
+option(USE_GLOG "Use GLOG" ON)
+option(USE_LEVELDB "Use LEVELDB" ON)
 option(USE_LITE_PROTO "Use lite protobuf instead of full." OFF)
-option(USE_LMDB "Use LMDB" OFF)
+option(USE_LMDB "Use LMDB" ON)
 option(USE_METAL "Use Metal for iOS build" ON)
 option(USE_NATIVE_ARCH "Use -march=native" OFF)
 cmake_dependent_option(
@@ -166,7 +173,7 @@ cmake_dependent_option(
     USE_SYSTEM_NCCL "Use system-wide NCCL" OFF
     "USE_NCCL" OFF)
 option(USE_NNAPI "Use NNAPI" OFF)
-option(USE_NNPACK "Use NNPACK" ON)
+option(USE_NNPACK "Use NNPACK" OFF)
 cmake_dependent_option(
     USE_NUMA "Use NUMA. Only available on Linux." ON
     "LINUX" OFF)
@@ -176,10 +183,10 @@ cmake_dependent_option(
 option(USE_NUMPY "Use NumPy" ON)
 option(USE_OBSERVERS "Use observers module." OFF)
 option(USE_OPENCL "Use OpenCL" OFF)
-option(USE_OPENCV "Use OpenCV" OFF)
+option(USE_OPENCV "Use OpenCV" ON)
 option(USE_OPENMP "Use OpenMP for parallel code" ON)
 option(USE_PROF "Use profiling" OFF)
-option(USE_QNNPACK "Use QNNPACK (quantized 8-bit operators)" ON)
+option(USE_QNNPACK "Use QNNPACK (quantized 8-bit operators)" OFF)
 option(USE_PYTORCH_QNNPACK "Use ATen/QNNPACK (quantized 8-bit operators)" ON)
 option(USE_REDIS "Use Redis" OFF)
 option(USE_ROCKSDB "Use RocksDB" OFF)
@@ -188,10 +195,10 @@ option(USE_SYSTEM_EIGEN_INSTALL
     "Use system Eigen instead of the one under third_party" OFF)
 option(USE_TENSORRT "Using Nvidia TensorRT library" OFF)
 option(USE_XNNPACK "Use XNNPACK" ON)
-option(USE_ZMQ "Use ZMQ" OFF)
+option(USE_ZMQ "Use ZMQ" ON)
 option(USE_ZSTD "Use ZSTD" OFF)
 cmake_dependent_option(
-  USE_MKLDNN "Use MKLDNN. Only available on x86 and x86_64." ON
+  USE_MKLDNN "Use MKLDNN. Only available on x86 and x86_64." OFF
   "CPU_INTEL" OFF)
 set(MKLDNN_ENABLE_CONCURRENT_EXEC ${USE_MKLDNN})
 cmake_dependent_option(
@@ -222,6 +229,8 @@ option(USE_SYSTEM_PTHREADPOOL "Use system-provided pthreadpool." OFF)
 option(USE_SYSTEM_PSIMD "Use system-provided psimd." OFF)
 option(USE_SYSTEM_FXDIV "Use system-provided fxdiv." OFF)
 option(USE_SYSTEM_BENCHMARK "Use system-provided google benchmark." OFF)
+option(USE_SYSTEM_ONNX "Use system-provided onnx." OFF)
+option(USE_SYSTEM_XNNPACK "Use system-provided xnnpack." OFF)
 if(USE_SYSTEM_LIBS)
   set(USE_SYSTEM_CPUINFO ON)
   set(USE_SYSTEM_SLEEF ON)
@@ -233,7 +242,14 @@ if(USE_SYSTEM_LIBS)
   set(USE_SYSTEM_PSIMD ON)
   set(USE_SYSTEM_FXDIV ON)
   set(USE_SYSTEM_BENCHMARK ON)
+  set(USE_SYSTEM_ONNX ON)
+  set(USE_SYSTEM_XNNPACK ON)
+
+  if(NOT EXISTS third_party/googletest AND EXISTS /usr/src/googletest)
+	execute_process(COMMAND ln -s /usr/src/googletest ${PROJECT_SOURCE_DIR}/third_party/googletest)
+  endif()
 endif()
+option(HAVE_SOVERSION "Whether to add SOVERSION to the shared objects" OFF)
 
 # Used when building Caffe2 through setup.py
 option(BUILDING_WITH_TORCH_LIBS "Tell cmake if Caffe2 is being built alongside torch libs" ON)
@@ -246,7 +262,11 @@ cmake_dependent_option(
   MSVC_Z7_OVERRIDE "Work around sccache bug by replacing /Zi and /ZI with /Z7 when using MSVC (if you are not using sccache, you can turn this OFF)" ON
   "MSVC" OFF)
 
-set(ONNX_NAMESPACE "onnx_torch" CACHE STRING "A namespace for ONNX; needed to build with other frameworks that share ONNX.")
+if(NOT USE_SYSTEM_ONNX)
+  set(ONNX_NAMESPACE "onnx_torch" CACHE STRING "A namespace for ONNX; needed to build with other frameworks that share ONNX.")
+elseif()
+  set(ONNX_NAMESPACE "onnx" CACHE STRING "A namespace for ONNX; needed to build with other frameworks that share ONNX.")
+endif()
 set(SELECTED_OP_LIST "" CACHE STRING
     "Path to the yaml file that contains the list of operators to include for custom build. Include all operators by default.")
 set(OP_DEPENDENCY "" CACHE STRING
