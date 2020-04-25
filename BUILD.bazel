@@ -1733,7 +1733,6 @@ cc_library(
         "@com_google_protobuf//:protobuf",
         "@eigen",
         "@fbgemm//:fbgemm_src_headers",
-        "@foxi",
         "@gloo",
         "@onnx",
     ] + if_cuda(
